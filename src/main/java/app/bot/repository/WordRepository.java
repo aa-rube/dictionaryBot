@@ -1,4 +1,4 @@
-package app.bot.config.repository;
+package app.bot.repository;
 
 import app.bot.model.Word;
 import org.springframework.data.jpa.repository.JpaRepository;

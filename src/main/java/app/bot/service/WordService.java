@@ -1,6 +1,6 @@
 package app.bot.service;
 
-import app.bot.config.repository.WordRepository;
+import app.bot.repository.WordRepository;
 import app.bot.model.Word;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;

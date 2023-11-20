@@ -1,7 +1,6 @@
-package app.bot.config.environment;
+package app.bot.environment;
 
 import app.bot.model.Word;
-import app.bot.service.Keyboards;
 import app.bot.service.WordService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;

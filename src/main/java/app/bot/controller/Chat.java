@@ -1,7 +1,7 @@
 package app.bot.controller;
 
 import app.bot.config.BotConfig;
-import app.bot.config.environment.CreateMessage;
+import app.bot.environment.CreateMessage;
 import app.bot.model.Word;
 import app.bot.service.WordService;
 import jakarta.annotation.PostConstruct;
@@ -12,7 +12,6 @@ import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.AnswerInlineQuery;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
-import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageText;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.inlinequery.InlineQuery;
 import org.telegram.telegrambots.meta.api.objects.inlinequery.inputmessagecontent.InputTextMessageContent;
@@ -31,45 +30,45 @@ public class Chat extends TelegramLongPollingBot {
     @Autowired
     private WordService wordService;
 
-
     private final TreeSet<String> tempWord = new TreeSet<>();
     private final HashSet<Long> waitWorAddWord = new HashSet<>();
     private final HashMap<Long, Integer> chatIdMsgId = new HashMap<>();
     private final HashMap<Long, List<Integer>> messageToEdit = new HashMap<>();
 
-
     @Override
     public String getBotUsername() {
         return botConfig.getBotName();
     }
-
     @Override
     public String getBotToken() {
         return botConfig.getToken();
     }
-
     @PostConstruct
     public void init() {
         for (Word w : wordService.findAllWords()) {
             tempWord.add(w.getWord());
         }
     }
-    @Scheduled(cron = "0 1 0 * * *")
-    private void fillTheList() {
-        init();
-    }
+
+//    @Scheduled(cron = "0 1 0 * * *")
+//    private void fillTheList() {
+//        init();
+//    }
+
     @Override
     public void onUpdateReceived(Update update) {
-        if (update.hasMessage() && update.getMessage().getViaBot() != null) {
-            if (("@" + update.getMessage().getViaBot().getUserName()).equals(botConfig.getBotName())) {
-                System.out.println("!!!!");
+        if ((update.getChannelPost() != null && update.getChannelPost().getViaBot() != null) ||
+                update.getMessage() != null && update.getMessage().getViaBot() != null) {
+            try {
+                tempWord.remove(update.getChannelPost().getText());
+            } catch (Exception e) {
                 tempWord.remove(update.getMessage().getText());
             }
+            return;
         }
 
         if (update.hasInlineQuery()) {
             waitWorAddWord.clear();
-            ;
             inlineAnswer(update);
             return;
         }
@@ -79,11 +78,15 @@ public class Chat extends TelegramLongPollingBot {
             return;
         }
 
-        if (update.hasMessage()) {
-            textMessageHandle(update.getMessage().getChatId(), update.getMessage().getText());
+        if (update.hasMessage() || update.hasChannelPost()) {
+            try {
+                textMessageHandle(update.getMessage().getChatId(), update.getMessage().getText());
+            } catch (Exception e) {
+                textMessageHandle(update.getChannelPost().getChatId(), update.getChannelPost().getText());
+            }
+            return;
         }
     }
-
     private void inlineAnswer(Update update) {
         InlineQuery inlineQuery = update.getInlineQuery();
         String query = inlineQuery.getQuery();
@@ -104,7 +107,6 @@ public class Chat extends TelegramLongPollingBot {
         }
 
     }
-
     public InlineQueryResultArticle getInlineQueryResult(String word) {
         InlineQueryResultArticle article = new InlineQueryResultArticle();
         article.setId(word);
@@ -114,7 +116,6 @@ public class Chat extends TelegramLongPollingBot {
         article.setInputMessageContent(messageContent);
         return article;
     }
-
     private void callBackDataHandle(Long chatId, String data) {
         deleteKeyboard(chatId);
 
@@ -148,8 +149,12 @@ public class Chat extends TelegramLongPollingBot {
             executeMsg(createMessage.getStartMessage(chatId));
         }
     }
-
     private void textMessageHandle(Long chatId, String text) {
+        if(text.equals("/del")) {
+            init();
+            executeMsg(createMessage.listRested(chatId));
+        }
+
         if (text.equals("/start")) {
             waitWorAddWord.remove(chatId);
             executeMsg(createMessage.getStartMessage(chatId));
@@ -190,7 +195,6 @@ public class Chat extends TelegramLongPollingBot {
             }
         }
     }
-
     private void executeMsg(SendMessage msg) {
         try {
             chatIdMsgId.put(Long.valueOf(msg.getChatId()),execute(msg).getMessageId());
@@ -198,7 +202,6 @@ public class Chat extends TelegramLongPollingBot {
             throw new RuntimeException(e);
         }
     }
-
     private synchronized void executeLongMsg(SendMessage msg) {
         String text = msg.getText();
         int chunkSize = 4096;
@@ -239,7 +242,6 @@ public class Chat extends TelegramLongPollingBot {
             }
         }
     }
-
     private void deleteKeyboard(Long chatId) {
         EditMessageReplyMarkup e = new EditMessageReplyMarkup();
         e.setChatId(chatId);
