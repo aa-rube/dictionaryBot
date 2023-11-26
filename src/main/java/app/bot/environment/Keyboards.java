@@ -83,4 +83,18 @@ public class Keyboards {
         inLineKeyBoard.setKeyboard(keyboardMatrix);
         return inLineKeyBoard;
     }
+
+
+    public InlineKeyboardMarkup backToMain() {
+        InlineKeyboardMarkup inLineKeyBoard = new InlineKeyboardMarkup();
+        List<List<InlineKeyboardButton>> keyboardMatrix = new ArrayList<>();
+        List<InlineKeyboardButton> firstRow = new ArrayList<>();
+        InlineKeyboardButton settings = new InlineKeyboardButton();
+        settings.setText("Назад");
+        settings.setCallbackData("start");
+        firstRow.add(settings);
+        keyboardMatrix.add(firstRow);
+        inLineKeyBoard.setKeyboard(keyboardMatrix);
+        return inLineKeyBoard;
+    }
 }

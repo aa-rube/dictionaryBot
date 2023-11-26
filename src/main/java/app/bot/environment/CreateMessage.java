@@ -8,6 +8,9 @@ import org.telegram.telegrambots.meta.api.methods.ParseMode;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 
+import java.util.HashSet;
+import java.util.List;
+
 @Service
 public class CreateMessage {
     @Autowired
@@ -60,5 +63,16 @@ public class CreateMessage {
 
     public SendMessage listRested(Long chatId) {
         return getSendMessage(chatId, "Список сброшен", null);
+    }
+
+    public SendMessage getRemovedWordsList(Long chatId, HashSet<String> removed) {
+        builder.setLength(0);
+        builder.append("Список использованных слов:\n");
+
+        for (String s : removed) {
+            builder.append(s).append("\n")
+                    .append("/backToLIst_").append(s.split(" ")[0]).append("\n\n");
+        }
+        return getSendMessage(chatId, builder.toString(), keyboards.backToMain());
     }
 }

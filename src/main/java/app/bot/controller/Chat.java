@@ -6,7 +6,6 @@ import app.bot.model.Word;
 import app.bot.service.WordService;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Controller;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.AnswerInlineQuery;
@@ -31,22 +30,33 @@ public class Chat extends TelegramLongPollingBot {
     private WordService wordService;
 
     private final TreeSet<String> tempWord = new TreeSet<>();
-    private final HashSet<Long> waitWorAddWord = new HashSet<>();
+    private final HashSet<Long> waitForAddWord = new HashSet<>();
     private final HashMap<Long, Integer> chatIdMsgId = new HashMap<>();
     private final HashMap<Long, List<Integer>> messageToEdit = new HashMap<>();
+    private final HashSet<String> removed = new HashSet<>();
+    private  final HashSet<String> fullWordsList = new HashSet<>();
 
     @Override
     public String getBotUsername() {
         return botConfig.getBotName();
     }
+
     @Override
     public String getBotToken() {
         return botConfig.getToken();
     }
+
     @PostConstruct
     public void init() {
+        tempWord.clear();
+        fullWordsList.clear();
+
         for (Word w : wordService.findAllWords()) {
             tempWord.add(w.getWord());
+        }
+
+        for(Word w : wordService.findAllWords()) {
+            fullWordsList.add(w.getWord());
         }
     }
 
@@ -60,15 +70,18 @@ public class Chat extends TelegramLongPollingBot {
         if ((update.getChannelPost() != null && update.getChannelPost().getViaBot() != null) ||
                 update.getMessage() != null && update.getMessage().getViaBot() != null) {
             try {
-                tempWord.remove(update.getChannelPost().getText());
+                String command = update.getChannelPost().getText().split(" ")[0].toLowerCase();
+                updateListTempWord(command);
+
             } catch (Exception e) {
-                tempWord.remove(update.getMessage().getText());
+                String command = update.getMessage().getText().split(" ")[0].toLowerCase();
+                updateListTempWord(command);
             }
             return;
         }
 
         if (update.hasInlineQuery()) {
-            waitWorAddWord.clear();
+            waitForAddWord.clear();
             inlineAnswer(update);
             return;
         }
@@ -87,12 +100,23 @@ public class Chat extends TelegramLongPollingBot {
             return;
         }
     }
+
+    private void updateListTempWord(String command) {
+        tempWord.removeIf(item -> {
+            if (item.toLowerCase().contains(command)) {
+                removed.add(item.split(" ")[0]);
+                return true;
+            }
+            return  false;
+        });
+    }
+
     private void inlineAnswer(Update update) {
         InlineQuery inlineQuery = update.getInlineQuery();
         String query = inlineQuery.getQuery();
 
         List<InlineQueryResultArticle> results = tempWord.stream()
-                .filter(word -> word.toLowerCase().trim().contains(query.toLowerCase()))
+                .filter(word -> word.toLowerCase().trim().startsWith(query.toLowerCase()))
                 .map(this::getInlineQueryResult)
                 .limit(50)
                 .collect(Collectors.toList());
@@ -107,6 +131,7 @@ public class Chat extends TelegramLongPollingBot {
         }
 
     }
+
     public InlineQueryResultArticle getInlineQueryResult(String word) {
         InlineQueryResultArticle article = new InlineQueryResultArticle();
         article.setId(word);
@@ -116,8 +141,12 @@ public class Chat extends TelegramLongPollingBot {
         article.setInputMessageContent(messageContent);
         return article;
     }
+
     private void callBackDataHandle(Long chatId, String data) {
-        deleteKeyboard(chatId);
+        try {
+            deleteKeyboard(chatId);
+        } catch (Exception ignored) {
+        }
 
         if (data.equals("settings")) {
             executeLongMsg(createMessage.getAddNewWordAndList(chatId));
@@ -125,19 +154,19 @@ public class Chat extends TelegramLongPollingBot {
         }
 
         if (data.equals("add")) {
-            waitWorAddWord.add(chatId);
+            waitForAddWord.add(chatId);
             executeMsg(createMessage.getAddWordMessage(chatId, ""));
             return;
         }
 
         if (data.equals("reset0")) {
-            waitWorAddWord.remove(chatId);
+            waitForAddWord.remove(chatId);
             executeMsg(createMessage.resetList(chatId));
             return;
         }
 
         if (data.equals("reset1")) {
-            waitWorAddWord.remove(chatId);
+            waitForAddWord.remove(chatId);
             init();
             executeMsg(createMessage.listRested(chatId));
             executeMsg(createMessage.getStartMessage(chatId));
@@ -145,22 +174,41 @@ public class Chat extends TelegramLongPollingBot {
         }
 
         if (data.equals("start")) {
-            waitWorAddWord.remove(chatId);
+            waitForAddWord.remove(chatId);
             executeMsg(createMessage.getStartMessage(chatId));
         }
     }
-    private void textMessageHandle(Long chatId, String text) {
-        if(text.equals("/del")) {
-            init();
-            executeMsg(createMessage.listRested(chatId));
-        }
 
+    private void textMessageHandle(Long chatId, String text) {
         if (text.equals("/start")) {
-            waitWorAddWord.remove(chatId);
+            waitForAddWord.remove(chatId);
             executeMsg(createMessage.getStartMessage(chatId));
             return;
 
         }
+        
+        if (text.equals("/del")) {
+            init();
+            executeMsg(createMessage.listRested(chatId));
+        }
+
+        if (text.equals("/s")) {
+            executeMsg(createMessage.getRemovedWordsList(chatId, removed));
+        }
+
+        if (text.contains("/backToLIst_")) {
+            String command = text.split("_")[1].toLowerCase();
+            for(String s : fullWordsList) {
+                if (s.toLowerCase().contains(command)) {
+                    tempWord.add(s);
+                }
+            }
+
+            removed.removeIf(item -> item.toLowerCase().contains(command));
+            executeMsg(createMessage.getRemovedWordsList(chatId, removed));
+        }
+
+
 
         if (text.contains("/deleteWord_")) {
             try {
@@ -175,13 +223,17 @@ public class Chat extends TelegramLongPollingBot {
             return;
         }
 
-        if (waitWorAddWord.contains(chatId)) {
-            deleteKeyboard(chatId);
+        if (waitForAddWord.contains(chatId)) {
+            try {
+                deleteKeyboard(chatId);
+            } catch (Exception ignored) {
+            }
             try {
                 if (text.trim().split(",").length > 2) {
                     for (String s : text.split(",")) {
                         wordService.save(s.trim());
                         tempWord.add(s.trim());
+                        fullWordsList.add(s.trim());
                     }
 
                 } else {
@@ -195,13 +247,15 @@ public class Chat extends TelegramLongPollingBot {
             }
         }
     }
+
     private void executeMsg(SendMessage msg) {
         try {
-            chatIdMsgId.put(Long.valueOf(msg.getChatId()),execute(msg).getMessageId());
+            chatIdMsgId.put(Long.valueOf(msg.getChatId()), execute(msg).getMessageId());
         } catch (TelegramApiException e) {
             throw new RuntimeException(e);
         }
     }
+
     private synchronized void executeLongMsg(SendMessage msg) {
         String text = msg.getText();
         int chunkSize = 4096;
@@ -242,6 +296,7 @@ public class Chat extends TelegramLongPollingBot {
             }
         }
     }
+
     private void deleteKeyboard(Long chatId) {
         EditMessageReplyMarkup e = new EditMessageReplyMarkup();
         e.setChatId(chatId);
@@ -250,7 +305,6 @@ public class Chat extends TelegramLongPollingBot {
         try {
             execute(e);
         } catch (TelegramApiException ex) {
-            throw new RuntimeException(ex);
         }
     }
 }
